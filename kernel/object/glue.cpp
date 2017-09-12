@@ -14,6 +14,7 @@
 #include <pow2.h>
 #include <trace.h>
 
+#include <dev/iommu/dummy.h>
 #include <kernel/cmdline.h>
 
 #include <lk/init.h>
