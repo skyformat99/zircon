@@ -291,6 +291,23 @@ zx_status_t sys_iommu_create(zx_handle_t rsrc_handle, uint32_t type, user_ptr<co
         return status;
     }
 
+    TRACEF("IOMMU Create\n");
+    static fbl::RefPtr<Dispatcher> main_iommu = nullptr;
+    static fbl::Mutex m;
+    static zx_rights_t main_iommu_rights;
+    fbl::AutoLock guard(&m);
+    if (type == ZX_IOMMU_TYPE_DUMMY && main_iommu) {
+        TRACEF("Using stashed IOMMU\n");
+        HandleOwner handle(MakeHandle(main_iommu, main_iommu_rights));
+
+        auto up = ProcessDispatcher::GetCurrent();
+        if (out.copy_to_user(up->MapHandleToValue(handle)) != ZX_OK)
+            return ZX_ERR_INVALID_ARGS;
+
+        up->AddHandle(fbl::move(handle));
+        return ZX_OK;
+    }
+
     if (desc_len > ZX_IOMMU_MAX_DESC_LEN) {
         return ZX_ERR_INVALID_ARGS;
     }
@@ -316,6 +333,9 @@ zx_status_t sys_iommu_create(zx_handle_t rsrc_handle, uint32_t type, user_ptr<co
             return status;
         }
     }
+
+    main_iommu = dispatcher;
+    main_iommu_rights = rights;
 
     HandleOwner handle(MakeHandle(fbl::move(dispatcher), rights));
 
