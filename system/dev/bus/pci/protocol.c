@@ -7,6 +7,7 @@
 #include <assert.h>
 #include <limits.h>
 #include <zircon/process.h>
+#include <zircon/syscalls/iommu.h>
 
 #include "kpci-private.h"
 
@@ -18,15 +19,22 @@ static zx_status_t kpci_enable_bus_master(void* ctx, bool enable) {
 static zx_status_t kpci_get_bti(void* ctx, zx_handle_t* out_handle) {
     kpci_device_t* device = ctx;
 
-    for (size_t i = 0; i < countof(device->props); ++i) {
-        if (device->props[i].id == BIND_PCI_BDF_ADDR) {
-            const uint32_t bdf = device->props[i].id;
-            const zx_handle_t iommu_handle = ZX_HANDLE_INVALID;
-            return zx_bti_create(iommu_handle, bdf, out_handle);
-        }
+    printf("get_bti: [%04x:%04x] %x:%x.%u\n", device->info.vendor_id, device->info.device_id, device->info.bus_id, device->info.dev_id, device->info.func_id);
+    const uint32_t bdf = ((uint32_t)device->info.bus_id << 8) +
+            ((uint32_t)device->info.dev_id << 3) +
+            device->info.func_id;
+    zx_handle_t iommu_handle;
+    zx_iommu_desc_dummy_t dummy;
+    zx_status_t status = zx_iommu_create(get_root_resource(), ZX_IOMMU_TYPE_DUMMY, &dummy,
+                                         1, &iommu_handle);
+    if (status != ZX_OK) {
+        printf("iommu created failed\n");
+        return status;
     }
-
-    return ZX_ERR_NOT_SUPPORTED;
+    status = zx_bti_create(iommu_handle, bdf, out_handle);
+    printf("bti create(%x): %d\n", bdf, status);
+    zx_handle_close(iommu_handle);
+    return status;
 }
 
 static zx_status_t kpci_enable_pio(void* ctx, bool enable) {

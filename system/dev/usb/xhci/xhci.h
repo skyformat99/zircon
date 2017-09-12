@@ -208,7 +208,7 @@ struct xhci {
     io_buffer_t scratch_pad_index_buffer;
 };
 
-zx_status_t xhci_init(xhci_t* xhci, xhci_mode_t mode, uint32_t num_interrupts);
+zx_status_t xhci_init(xhci_t* xhci, xhci_mode_t mode, uint32_t num_interrupts, zx_handle_t bti);
 int xhci_get_ep_ctx_state(xhci_slot_t* slot, xhci_endpoint_t* ep);
 void xhci_set_dbcaa(xhci_t* xhci, uint32_t slot_id, zx_paddr_t paddr);
 zx_status_t xhci_start(xhci_t* xhci);

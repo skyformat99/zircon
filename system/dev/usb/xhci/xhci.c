@@ -151,7 +151,7 @@ static void xhci_vmo_release(zx_handle_t handle, zx_vaddr_t virt) {
     zx_handle_close(handle);
 }
 
-zx_status_t xhci_init(xhci_t* xhci, xhci_mode_t mode, uint32_t num_interrupts) {
+zx_status_t xhci_init(xhci_t* xhci, xhci_mode_t mode, uint32_t num_interrupts, zx_handle_t bti) {
     zx_status_t result = ZX_OK;
 
     list_initialize(&xhci->command_queue);
@@ -238,9 +238,9 @@ zx_status_t xhci_init(xhci_t* xhci, xhci_mode_t mode, uint32_t num_interrupts) {
         size_t scratch_pad_pages_size = scratch_pad_bufs * xhci->page_size;
         result = io_buffer_init(&xhci->scratch_pad_pages_buffer, scratch_pad_pages_size, flags);
         if (result != ZX_OK) {
-            dprintf(ERROR, "xhci_vmo_init failed for xhci->scratch_pad_pages_buffer\n");
+            dprintf(ERROR, "io_buffer_init failed for xhci->scratch_pad_pages_buffer\n");
             goto fail;
-        }
+    }
         size_t scratch_pad_index_size = PAGE_ROUNDUP(scratch_pad_bufs * sizeof(uint64_t));
         result = io_buffer_init(&xhci->scratch_pad_index_buffer, scratch_pad_index_size,
                                 IO_BUFFER_RW | IO_BUFFER_CONTIG);
