@@ -78,6 +78,7 @@ MODULE_SRCS += \
 	$(LOCAL_DIR)/user_copy.cpp \
 
 MODULE_DEPS += \
+	kernel/dev/iommu/dummy \
 	kernel/lib/bitmap \
 	kernel/lib/fbl \
 	kernel/object
