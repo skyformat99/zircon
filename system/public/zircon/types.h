@@ -279,6 +279,10 @@ typedef enum {
 #define ZX_TIMER_SLACK_EARLY        1u
 #define ZX_TIMER_SLACK_LATE         2u
 
+// Commands used by zx_system_cpu_ctl()
+#define ZX_SYS_CPU_CTL_START         1u
+#define ZX_SYS_CPU_CTL_STOP          2u
+#define ZX_SYS_CPU_CTL_ENTER_S_STATE 3u
 
 #ifdef __cplusplus
 // We cannot use <stdatomic.h> with C++ code as _Atomic qualifier defined by

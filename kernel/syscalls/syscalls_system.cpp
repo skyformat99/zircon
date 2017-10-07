@@ -16,13 +16,23 @@
 #include <vm/vm_aspace.h>
 #include <zircon/boot/bootdata.h>
 #include <zircon/compiler.h>
+#include <zircon/syscalls/resource.h>
 #include <zircon/types.h>
 #include <mexec.h>
+#include <object/resources.h>
 #include <object/process_dispatcher.h>
 #include <object/vm_object_dispatcher.h>
 #include <platform.h>
 #include <string.h>
 #include <trace.h>
+
+#if ARCH_X86
+extern "C" {
+#include <acpica/acpi.h>
+#include <acpica/accommon.h>
+#include <acpica/achware.h>
+}
+#endif
 
 #define LOCAL_TRACE 0
 
@@ -353,4 +363,59 @@ zx_status_t sys_system_mexec(zx_handle_t kernel_vmo, zx_handle_t bootimage_vmo,
 
     panic("Execution should never reach here\n");
     return ZX_OK;
+}
+
+zx_status_t sys_system_cpu_ctl(zx_handle_t root_rsrc, uint32_t cpu_num, uint32_t cmd,
+                               uint64_t arg) {
+    TRACEF("Received system_cpu_ctl()\n");
+
+    zx_status_t status;
+    if ((status = validate_resource(root_rsrc, ZX_RSRC_KIND_ROOT)) < 0) {
+        TRACEF("Bad resource\n");
+        return status;
+    }
+
+    switch (cmd) {
+        case ZX_SYS_CPU_CTL_START:
+            return mp_hotplug_cpu(cpu_num);
+        case ZX_SYS_CPU_CTL_STOP:
+            return mp_unplug_cpu(cpu_num);
+        case ZX_SYS_CPU_CTL_ENTER_S_STATE: {
+            if (cpu_num != 0) {
+                TRACEF("S-state targeting not cpu 0\n");
+                return ZX_ERR_INVALID_ARGS;
+            }
+
+            const uint8_t sleep_state = static_cast<uint8_t>(arg);
+            const uint8_t sleep_type_a = static_cast<uint8_t>(arg >> 8);
+            const uint8_t sleep_type_b = static_cast<uint8_t>(arg >> 16);
+            if (sleep_state == 0 || sleep_state > 5) {
+                TRACEF("Bad S-state: S%" PRIu64 "\n", arg);
+                return ZX_ERR_INVALID_ARGS;
+            }
+
+            // If not a shutdown, ensure CPU 0 is the only cpu left running.
+            if (sleep_state != 5 && mp_get_online_mask() != 1) {
+                TRACEF("Too many CPUs running for state S%u\n", sleep_state);
+                return ZX_ERR_BAD_STATE;
+            }
+
+            arch_disable_ints();
+            // TODO: Set up return vector!
+            TRACEF("Entering AcpiHwLegacySleepFinal\n");
+            ACPI_STATUS acpi_status = AcpiHwLegacySleepFinal(sleep_state,
+                                                             sleep_type_a, sleep_type_b);
+            arch_enable_ints();
+            if (acpi_status != AE_OK) {
+                TRACEF("AcpiHwLegacySleepFinal failed: %x\n", acpi_status);
+                return ZX_ERR_INTERNAL;
+            }
+
+            TRACEF("Success?\n");
+            return ZX_OK;
+        }
+        default:
+            TRACEF("Invalid cmd?\n");
+            return ZX_ERR_INVALID_ARGS;
+    }
 }

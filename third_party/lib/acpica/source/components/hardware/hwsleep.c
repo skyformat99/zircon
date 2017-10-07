@@ -67,19 +67,9 @@ ACPI_STATUS
 AcpiHwLegacySleep (
     UINT8                   SleepState)
 {
-    ACPI_BIT_REGISTER_INFO  *SleepTypeRegInfo;
-    ACPI_BIT_REGISTER_INFO  *SleepEnableRegInfo;
-    UINT32                  Pm1aControl;
-    UINT32                  Pm1bControl;
-    UINT32                  InValue;
     ACPI_STATUS             Status;
 
-
     ACPI_FUNCTION_TRACE (HwLegacySleep);
-
-
-    SleepTypeRegInfo = AcpiHwGetBitRegisterInfo (ACPI_BITREG_SLEEP_TYPE);
-    SleepEnableRegInfo = AcpiHwGetBitRegisterInfo (ACPI_BITREG_SLEEP_ENABLE);
 
     /* Clear wake status */
 
@@ -115,6 +105,38 @@ AcpiHwLegacySleep (
         return_ACPI_STATUS (Status);
     }
 
+#if defined(__Fuchsia__) && !defined(_KERNEL)
+    extern zx_handle_t get_root_resource(void);
+    uint64_t arg = SleepState;
+    arg |= (uint64_t)AcpiGbl_SleepTypeA << 8;
+    arg |= (uint64_t)AcpiGbl_SleepTypeB << 16;
+    zx_status_t zx_status = zx_system_cpu_ctl(get_root_resource(), 0 /* cpu 0 */,
+                                              ZX_SYS_CPU_CTL_ENTER_S_STATE, arg);
+    if (zx_status == ZX_OK) {
+        Status = AE_OK;
+    } else {
+        Status = AE_ERROR;
+    }
+#else
+    Status = AcpiHwLegacySleepFinal(SleepState, AcpiGbl_SleepTypeA, AcpiGbl_SleepTypeB);
+#endif
+    return_ACPI_STATUS (Status);
+}
+
+ACPI_STATUS
+AcpiHwLegacySleepFinal(UINT8 SleepState, UINT8 SleepTypeA, UINT8 SleepTypeB) {
+    ACPI_STATUS             Status;
+    UINT32                  Pm1aControl;
+    UINT32                  Pm1bControl;
+    UINT32                  InValue;
+    ACPI_BIT_REGISTER_INFO  *SleepTypeRegInfo;
+    ACPI_BIT_REGISTER_INFO  *SleepEnableRegInfo;
+
+    ACPI_FUNCTION_TRACE (HwLegacySleepFinal);
+
+    SleepTypeRegInfo = AcpiHwGetBitRegisterInfo (ACPI_BITREG_SLEEP_TYPE);
+    SleepEnableRegInfo = AcpiHwGetBitRegisterInfo (ACPI_BITREG_SLEEP_ENABLE);
+
     /* Get current value of PM1A control */
 
     Status = AcpiHwRegisterRead (ACPI_REGISTER_PM1_CONTROL,
@@ -134,8 +156,8 @@ AcpiHwLegacySleep (
 
     /* Insert the SLP_TYP bits */
 
-    Pm1aControl |= (AcpiGbl_SleepTypeA << SleepTypeRegInfo->BitPosition);
-    Pm1bControl |= (AcpiGbl_SleepTypeB << SleepTypeRegInfo->BitPosition);
+    Pm1aControl |= (SleepTypeA << SleepTypeRegInfo->BitPosition);
+    Pm1bControl |= (SleepTypeB << SleepTypeRegInfo->BitPosition);
 
     /*
      * We split the writes of SLP_TYP and SLP_EN to workaround
@@ -202,7 +224,7 @@ AcpiHwLegacySleep (
 
     } while (!InValue);
 
-    return_ACPI_STATUS (AE_OK);
+    return_ACPI_STATUS (Status);
 }
 
 

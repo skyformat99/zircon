@@ -670,6 +670,10 @@ syscall system_mexec
    (kernel: zx_handle_t, bootimage: zx_handle_t, cmdline: char[cmdline_len] IN, cmdline_len: uint32_t)
    returns (zx_status_t);
 
+syscall system_cpu_ctl
+   (root_rsrc: zx_handle_t, cpu_num: uint32_t, cmd: uint32_t, arg: uint64_t)
+   returns (zx_status_t);
+
 # Internal-only task syscalls
 
 syscall job_set_relative_importance
