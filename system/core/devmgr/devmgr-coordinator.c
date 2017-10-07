@@ -67,6 +67,7 @@ static zx_status_t handle_dmctl_write(size_t len, const char* cmd) {
             dmprintf("dump        - dump device tree\n"
                      "poweroff    - power off the system\n"
                      "shutdown    - power off the system\n"
+                     "suspend     - suspend the system to RAM\n"
                      "reboot      - reboot the system\n"
                      "kerneldebug - send a command to the kernel\n"
                      "ktraceoff   - stop kernel tracing\n"
@@ -81,6 +82,10 @@ static zx_status_t handle_dmctl_write(size_t len, const char* cmd) {
         devmgr_vfs_exit();
         dh_suspend(&sys_device, DEVICE_SUSPEND_FLAG_REBOOT);
         zx_debug_send_command(get_root_resource(), "reboot", sizeof("reboot"));
+        return ZX_OK;
+    }
+    if ((len == 7) && !memcmp(cmd, "suspend", 7)) {
+        dh_suspend(&sys_device, DEVICE_SUSPEND_FLAG_SUSPEND_RAM);
         return ZX_OK;
     }
     if ((len == 7) && !memcmp(cmd, "drivers", 7)) {
