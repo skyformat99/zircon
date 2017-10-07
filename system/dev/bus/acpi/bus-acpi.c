@@ -522,6 +522,9 @@ static zx_status_t sys_device_suspend(void* ctx, uint32_t flags) {
     case DEVICE_SUSPEND_FLAG_POWEROFF:
         poweroff();
         exit(0);
+    case DEVICE_SUSPEND_FLAG_SUSPEND_RAM:
+        suspend_to_ram();
+        return ZX_ERR_INTERNAL;
     default:
         return ZX_ERR_NOT_SUPPORTED;
     };
