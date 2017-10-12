@@ -11,6 +11,7 @@
 
 #include <ddk/protocol/block.h>
 #include <virtio/block.h>
+#include "backends/backend.h"
 
 namespace virtio {
 
@@ -18,7 +19,7 @@ class Ring;
 
 class BlockDevice : public Device {
 public:
-    BlockDevice(zx_device_t* device);
+    BlockDevice(zx_device_t* device, fbl::unique_ptr<Backend>&& backend);
     virtual ~BlockDevice();
 
     virtual zx_status_t Init();
@@ -29,6 +30,7 @@ public:
     uint64_t GetSize() const { return config_.capacity * config_.blk_size; }
     uint32_t GetBlockSize() const { return config_.blk_size; }
     uint64_t GetBlockCount() const { return config_.capacity; }
+    const char* Tag(void) const { return "virtio-blk"; }
 
 private:
     // DDK driver hooks

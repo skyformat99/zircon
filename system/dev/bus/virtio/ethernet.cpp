@@ -168,12 +168,10 @@ uint8_t* GetFrameData(io_buffer_t* bufs, uint16_t ring_id, uint16_t desc_id) {
 
 } // namespace
 
-EthernetDevice::EthernetDevice(zx_device_t* bus_device)
-    : Device(bus_device), rx_(this), tx_(this), bufs_(nullptr), unkicked_(0), ifc_(nullptr),
-      cookie_(nullptr) {
-    LTRACE_ENTRY;
-    // VirtIO spec 1.0, section 4.1.4.8
-    bar0_size_ = VIRTIO_PCI_CONFIG_OFFSET_NOMSI + sizeof(config_);
+EthernetDevice::EthernetDevice(zx_device_t* bus_device, fbl::unique_ptr<Backend>&& backend)
+    : Device(bus_device, fbl::move(backend)), rx_(this), tx_(this), bufs_(nullptr), unkicked_(0),
+      ifc_(nullptr), cookie_(nullptr) {
+    backend_->SetTag(Tag());
 }
 
 EthernetDevice::~EthernetDevice() {
@@ -190,7 +188,7 @@ zx_status_t EthernetDevice::Init() {
     fbl::AutoLock lock(&state_lock_);
 
     // Reset the device and read our configuration
-    Reset();
+    DeviceReset();
     CopyDeviceConfig(&config_, sizeof(config_));
     LTRACEF("mac %02x:%02x:%02x:%02x:%02x:%02x\n", config_.mac[0], config_.mac[1], config_.mac[2],
             config_.mac[3], config_.mac[4], config_.mac[5]);
@@ -198,7 +196,7 @@ zx_status_t EthernetDevice::Init() {
     LTRACEF("max_virtqueue_pairs  %u\n", config_.max_virtqueue_pairs);
 
     // Ack and set the driver status bit
-    StatusAcknowledgeDriver();
+    DriverStatusAck();
 
     // TODO(aarongreen): Check features bits and ack/nak them
 
@@ -258,7 +256,7 @@ zx_status_t EthernetDevice::Init() {
 
     // Woohoo! Driver should be ready.
     cleanup.cancel();
-    StatusDriverOK();
+    DriverStatusOk();
     return ZX_OK;
 }
 

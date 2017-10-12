@@ -87,10 +87,8 @@ zx_status_t BlockDevice::virtio_block_ioctl(void* ctx, uint32_t op, const void* 
     }
 }
 
-BlockDevice::BlockDevice(zx_device_t* bus_device)
-    : Device(bus_device) {
-    // so that Bind() knows how much io space to allocate
-    bar0_size_ = 0x40;
+BlockDevice::BlockDevice(zx_device_t* bus_device, fbl::unique_ptr<Backend>&& backend)
+    : Device(bus_device, fbl::move(backend)) {
 }
 
 BlockDevice::~BlockDevice() {
@@ -160,7 +158,7 @@ zx_status_t BlockDevice::Init() {
     LTRACE_ENTRY;
 
     // reset the device
-    Reset();
+    DeviceReset();
 
     // read our configuration
     CopyDeviceConfig(&config_, sizeof(config_));
@@ -171,7 +169,7 @@ zx_status_t BlockDevice::Init() {
     LTRACEF("blk_size %#x\n", config_.blk_size);
 
     // ack and set the driver status bit
-    StatusAcknowledgeDriver();
+    DriverStatusAck();
 
     // XXX check features bits and ack/nak them
 
@@ -203,7 +201,7 @@ zx_status_t BlockDevice::Init() {
     StartIrqThread();
 
     // set DRIVER_OK
-    StatusDriverOK();
+    DriverStatusOk();
 
     // initialize the zx_device and publish us
     // point the ctx of our DDK device at ourself

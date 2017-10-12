@@ -10,8 +10,9 @@
 
 namespace virtio {
 
-RngDevice::RngDevice(zx_device_t* bus_device)
-    : Device(bus_device) {
+RngDevice::RngDevice(zx_device_t* bus_device, fbl::unique_ptr<Backend>&& backend)
+    : Device(bus_device, fbl::move(backend)) {
+    backend_->SetTag(Tag());
 }
 
 RngDevice::~RngDevice() {
@@ -20,10 +21,10 @@ RngDevice::~RngDevice() {
 
 zx_status_t RngDevice::Init() {
     // reset the device
-    Reset();
+    DeviceReset();
 
     // ack and set the driver status bit
-    StatusAcknowledgeDriver();
+    DriverStatusAck();
 
     // allocate the main vring
     auto err = vring_.Init(kRingIndex, kRingSize);
@@ -46,7 +47,7 @@ zx_status_t RngDevice::Init() {
     StartIrqThread();
 
     // set DRIVER_OK
-    StatusDriverOK();
+    DriverStatusOk();
 
     device_add_args_t args = {};
     args.version = DEVICE_ADD_ARGS_VERSION;
@@ -55,7 +56,7 @@ zx_status_t RngDevice::Init() {
     args.ops = &device_ops_;
 
     auto status = device_add(bus_device_, &args, &device_);
-    if (status < 0) {
+    if (status != ZX_OK) {
         dprintf(ERROR, "virtio-rng: device_add failed %d\n", status);
         device_ = nullptr;
         return status;
@@ -113,7 +114,6 @@ int RngDevice::SeedThreadEntry(void* arg) {
 
 zx_status_t RngDevice::Request() {
     dprintf(TRACE, "virtio-rng: sending entropy request\n");
-    fbl::AutoLock lock(&lock_);
     uint16_t i;
     vring_desc* desc = vring_.AllocDescChain(1, &i);
     if (!desc) {

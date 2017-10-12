@@ -12,22 +12,25 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <virtio/virtio.h>
+
 // implemented in virtio_driver.cpp
-extern zx_status_t virtio_bind(void* ctx, zx_device_t* device, void** cookie);
+extern zx_status_t virtio_pci_bind(void* ctx, zx_device_t* device, void** cookie);
 
 static zx_driver_ops_t virtio_driver_ops = {
     .version = DRIVER_OPS_VERSION,
-    .bind = virtio_bind,
+    .bind = virtio_pci_bind,
 };
 
-ZIRCON_DRIVER_BEGIN(virtio, virtio_driver_ops, "zircon", "0.1", 9)
+ZIRCON_DRIVER_BEGIN(virtio, virtio_driver_ops, "zircon", "0.1", 10)
     BI_ABORT_IF(NE, BIND_PROTOCOL, ZX_PROTOCOL_PCI),
-    BI_ABORT_IF(NE, BIND_PCI_VID, 0x1af4),
-    BI_MATCH_IF(EQ, BIND_PCI_DID, 0x1000), // Network device (transitional)
-    BI_MATCH_IF(EQ, BIND_PCI_DID, 0x1001), // Block device (transitional)
-    BI_MATCH_IF(EQ, BIND_PCI_DID, 0x1042), // Block device
-    BI_MATCH_IF(EQ, BIND_PCI_DID, 0x1005), // RNG device (transitional)
-    BI_MATCH_IF(EQ, BIND_PCI_DID, 0x1044), // RNG device
-    BI_MATCH_IF(EQ, BIND_PCI_DID, 0x1050), // GPU device
+    BI_ABORT_IF(NE, BIND_PCI_VID, VIRTIO_VENDOR_ID),
+    BI_MATCH_IF(EQ, BIND_PCI_DID, VIRTIO_DEV_TYPE_BLOCK),
+    BI_MATCH_IF(EQ, BIND_PCI_DID, VIRTIO_DEV_TYPE_ENTROPY),
+    BI_MATCH_IF(EQ, BIND_PCI_DID, VIRTIO_DEV_TYPE_NETWORK),
+    BI_MATCH_IF(EQ, BIND_PCI_DID, VIRTIO_DEV_TYPE_T_BLOCK),
+    BI_MATCH_IF(EQ, BIND_PCI_DID, VIRTIO_DEV_TYPE_T_ENTROPY),
+    BI_MATCH_IF(EQ, BIND_PCI_DID, VIRTIO_DEV_TYPE_T_NETWORK),
+    BI_MATCH_IF(EQ, BIND_PCI_DID, VIRTIO_DEV_TYPE_GPU),
     BI_ABORT(),
 ZIRCON_DRIVER_END(virtio)

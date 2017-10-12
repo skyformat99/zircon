@@ -25,7 +25,7 @@ namespace virtio {
 
 class EthernetDevice : public Device {
 public:
-    explicit EthernetDevice(zx_device_t* device);
+    explicit EthernetDevice(zx_device_t* device, fbl::unique_ptr<Backend>&& backend);
     virtual ~EthernetDevice();
 
     zx_status_t Init() override TA_EXCL(state_lock_);
@@ -40,6 +40,7 @@ public:
     void Stop() TA_EXCL(state_lock_);
     zx_status_t Start(ethmac_ifc_t* ifc, void* cookie) TA_EXCL(state_lock_);
     zx_status_t QueueTx(uint32_t options, ethmac_netbuf_t* netbuf) TA_EXCL(state_lock_);
+    const char* Tag(void) const override { return "virtio-net"; }
 
 private:
     DISALLOW_COPY_ASSIGN_AND_MOVE(EthernetDevice);

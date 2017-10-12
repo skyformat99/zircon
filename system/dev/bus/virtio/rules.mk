@@ -8,16 +8,20 @@ MODULE := $(LOCAL_DIR)
 
 MODULE_TYPE := driver
 
+MODULE_INCLUDES := $(LOCAL_DIR)
 MODULE_SRCS := \
     $(LOCAL_DIR)/block.cpp \
     $(LOCAL_DIR)/device.cpp \
     $(LOCAL_DIR)/ethernet.cpp \
-    $(LOCAL_DIR)/gpu.cpp \
     $(LOCAL_DIR)/ring.cpp \
-    $(LOCAL_DIR)/rng.cpp \
     $(LOCAL_DIR)/utils.cpp \
     $(LOCAL_DIR)/virtio_c.c \
     $(LOCAL_DIR)/virtio_driver.cpp \
+	$(LOCAL_DIR)/backends/pci.cpp \
+	$(LOCAL_DIR)/backends/pci_legacy.cpp \
+	$(LOCAL_DIR)/backends/pci_modern.cpp \
+    $(LOCAL_DIR)/gpu.cpp \
+    $(LOCAL_DIR)/rng.cpp \
 
 MODULE_STATIC_LIBS := \
     system/ulib/ddk \
