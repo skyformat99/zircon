@@ -134,10 +134,22 @@ static zx_status_t pdev_gpio_write(void* ctx, unsigned pin, unsigned value) {
     return platform_dev_rpc(dev, &req, &resp, NULL, 0);
 }
 
+static zx_status_t pdev_gpio_get_event_handle(void* ctx, unsigned pin, zx_handle_t* out_handle) {
+    platform_dev_t* dev = ctx;
+    pdev_req_t req = {
+        .op = PDEV_GPIO_GET_EVENT_HANDLE,
+        .index = pin,
+    };
+    pdev_resp_t resp;
+
+    return platform_dev_rpc(dev, &req, &resp, out_handle, 1);
+}
+
 static gpio_protocol_ops_t gpio_ops = {
     .config = pdev_gpio_config,
     .read = pdev_gpio_read,
     .write = pdev_gpio_write,
+    .get_event_handle = pdev_gpio_get_event_handle,
 };
 
 static zx_status_t platform_dev_get_protocol(void* ctx, uint32_t proto_id, void* out) {

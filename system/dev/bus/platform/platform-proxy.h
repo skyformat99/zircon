@@ -23,6 +23,7 @@ enum {
     PDEV_GPIO_CONFIG,
     PDEV_GPIO_READ,
     PDEV_GPIO_WRITE,
+    PDEV_GPIO_GET_EVENT_HANDLE,
 };
 
 typedef struct {

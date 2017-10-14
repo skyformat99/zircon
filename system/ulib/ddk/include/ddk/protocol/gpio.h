@@ -28,10 +28,17 @@ typedef enum {
     GPIO_TRIGGER_LOW        = 1 << 3,
 } gpio_config_flags_t;
 
+// signals used for waiting for GPIO state change
+#define GPIO_SIGNAL_LOW     ZX_USER_SIGNAL_0
+#define GPIO_SIGNAL_HIGH    ZX_USER_SIGNAL_1
+// signal reserved for exiting thread waiting on event handle
+#define GPIO_SIGNAL_STOP    ZX_USER_SIGNAL_2
+
 typedef struct {
     zx_status_t (*config)(void* ctx, unsigned pin, gpio_config_flags_t flags);
     zx_status_t (*read)(void* ctx, unsigned pin, unsigned* out_value);
     zx_status_t (*write)(void* ctx, unsigned pin, unsigned value);
+    zx_status_t (*get_event_handle)(void* ctx, unsigned pin, zx_handle_t* out_handle);
 } gpio_protocol_ops_t;
 
 typedef struct {
@@ -53,6 +60,12 @@ static inline zx_status_t gpio_read(gpio_protocol_t* gpio, unsigned pin, unsigne
 // sets the current value of the GPIO (any non-zero value maps to 1)
 static inline zx_status_t gpio_write(gpio_protocol_t* gpio, unsigned pin, unsigned value) {
     return gpio->ops->write(gpio->ctx, pin, value);
+}
+
+// returns a handle used for waiting on state changes
+static inline zx_status_t gpio_get_event_handle(gpio_protocol_t* gpio, unsigned pin,
+                                                zx_handle_t* out_handle) {
+    return gpio->ops->get_event_handle(gpio->ctx, pin, out_handle);
 }
 
 __END_CDECLS;

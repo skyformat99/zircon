@@ -107,20 +107,13 @@ zx_status_t hi3360_add_gpios(hi3660_bus_t* bus) {
         if (!gpios) {
             return ZX_ERR_NO_MEMORY;
         }
-
-        status = io_buffer_init_physical(&gpios->buffer, block->base, block->length,
-                                         resource, ZX_CACHE_POLICY_UNCACHED_DEVICE);
+        status = pl061_init(gpios, block->start_pin, block->pin_count, block->irqs,
+                            block->irq_count, block->base, block->length, resource);
         if (status != ZX_OK) {
-            dprintf(ERROR, "hi3360_add_gpios: io_buffer_init_physical failed %d\n", status);
-            free(gpios);
+            pl061_free(gpios);
             return status;
         }
 
-        mtx_init(&gpios->lock, mtx_plain);
-        gpios->gpio_start = block->start_pin;
-        gpios->gpio_count = block->pin_count;
-        gpios->irqs = block->irqs;
-        gpios->irq_count = block->irq_count;
         list_add_tail(&bus->gpios, &gpios->node);
     }
 

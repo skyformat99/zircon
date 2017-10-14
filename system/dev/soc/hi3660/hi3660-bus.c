@@ -62,10 +62,20 @@ static zx_status_t hi3660_gpio_write(void* ctx, unsigned pin, unsigned value) {
     return pl061_proto_ops.write(gpios, pin, value);
 }
 
+static zx_status_t hi3660_gpio_get_event_handle(void* ctx, unsigned pin, zx_handle_t* out_handle) {
+    hi3660_bus_t* bus = ctx;
+    pl061_gpios_t* gpios = find_gpio(bus, pin);
+    if (!gpios) {
+        return ZX_ERR_INVALID_ARGS;
+    }
+    return pl061_proto_ops.get_event_handle(gpios, pin, out_handle);
+}
+
 static gpio_protocol_ops_t gpio_ops = {
     .config = hi3660_gpio_config,
     .read = hi3660_gpio_read,
     .write = hi3660_gpio_write,
+    .get_event_handle = hi3660_gpio_get_event_handle,
 };
 
 static zx_status_t hi3660_get_initial_mode(void* ctx, usb_mode_t* out_mode) {
@@ -114,8 +124,7 @@ static void hi3660_release(void* ctx) {
     pl061_gpios_t* gpios;
 
     while ((gpios = list_remove_head_type(&bus->gpios, pl061_gpios_t, node)) != NULL) {
-        io_buffer_release(&gpios->buffer);
-        free(gpios);
+        pl061_free(gpios);
     }
 
     io_buffer_release(&bus->usb3otg_bc);

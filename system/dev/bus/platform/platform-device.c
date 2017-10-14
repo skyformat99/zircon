@@ -96,6 +96,20 @@ static zx_status_t platform_dev_gpio_write(platform_dev_t* dev, uint32_t index, 
     return gpio_write(&bus->gpio, index, value);
 }
 
+static zx_status_t platform_dev_gpio_get_event_handle(platform_dev_t* dev, uint32_t index,
+                                                      zx_handle_t* out_handle,
+                                                      uint32_t* out_handle_count) {
+    platform_bus_t* bus = dev->bus;
+    if (!bus->gpio.ops) {
+        return ZX_ERR_NOT_SUPPORTED;
+    }
+    zx_status_t status = gpio_get_event_handle(&bus->gpio, index, out_handle);
+    if (status == ZX_OK) {
+        *out_handle_count = 1;
+    }
+    return status;
+}
+
 static zx_status_t platform_dev_rxrpc(void* ctx, zx_handle_t channel) {
     platform_dev_t* dev = ctx;
     pdev_req_t req;
@@ -136,6 +150,9 @@ static zx_status_t platform_dev_rxrpc(void* ctx, zx_handle_t channel) {
         break;
     case PDEV_GPIO_WRITE:
         resp.status = platform_dev_gpio_write(dev, req.index, req.gpio_value);
+        break;
+    case PDEV_GPIO_GET_EVENT_HANDLE:
+        resp.status = platform_dev_gpio_get_event_handle(dev, req.index, &handle, &handle_count);
         break;
     default:
         dprintf(ERROR, "platform_dev_rxrpc: unknown op %u\n", req.op);
