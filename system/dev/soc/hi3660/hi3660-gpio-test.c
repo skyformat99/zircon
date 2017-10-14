@@ -11,6 +11,7 @@
 #include <unistd.h>
 
 #include <ddk/binding.h>
+#include <ddk/debug.h>
 #include <ddk/device.h>
 #include <ddk/driver.h>
 #include <ddk/protocol/gpio.h>
@@ -26,16 +27,20 @@
 typedef struct {
     zx_device_t* zxdev;
     gpio_protocol_t gpio;
-    thrd_t thread;
+    thrd_t led_thread;
+    thrd_t button_thread;
+    zx_handle_t event_handle;
     bool done;
 } gpio_test_t;
 
 static void gpio_test_release(void* ctx) {
-    gpio_test_t* bus = ctx;
+    gpio_test_t* gpio_test = ctx;
 
-    bus->done = true;
-    thrd_join(bus->thread, NULL);
-    free(bus);
+    gpio_test->done = true;
+    zx_object_signal(gpio_test->event_handle, 0, GPIO_SIGNAL_STOP);
+    thrd_join(gpio_test->led_thread, NULL);
+    thrd_join(gpio_test->button_thread, NULL);
+    free(gpio_test);
 }
 
 static zx_protocol_device_t gpio_test_device_protocol = {
@@ -65,6 +70,34 @@ static int led_test_thread(void *arg) {
     return 0;
 }
 
+// test thread that monitors hikey 960 power button
+static int button_test_thread(void *arg) {
+    gpio_test_t* gpio_test = arg;
+    zx_handle_t event_handle = gpio_test->event_handle;
+
+    zx_signals_t wait_signals = GPIO_SIGNAL_LOW | GPIO_SIGNAL_HIGH | GPIO_SIGNAL_STOP;
+
+    while (!gpio_test->done) {
+        zx_signals_t observed_signals;
+        zx_status_t status = zx_object_wait_one(event_handle, wait_signals, ZX_TIME_INFINITE,
+                                                &observed_signals);
+        if (status != ZX_OK) {
+            dprintf(ERROR, "button_test_thread: zx_object_wait_one failed %d\n", status);
+            return status;
+        }
+        observed_signals &= wait_signals;
+        if (observed_signals & GPIO_SIGNAL_LOW) {
+            dprintf(INFO, "button_test_thread: GPIO_SIGNAL_LOW\n");
+            wait_signals = GPIO_SIGNAL_HIGH | GPIO_SIGNAL_STOP;
+        } else if (observed_signals & GPIO_SIGNAL_HIGH) {
+            dprintf(INFO, "button_test_thread: GPIO_SIGNAL_HIGH\n");
+            wait_signals = GPIO_SIGNAL_LOW | GPIO_SIGNAL_STOP;
+        }
+    }
+
+    return 0;
+}
+
 static zx_status_t gpio_test_bind(void* ctx, zx_device_t* parent, void** cookie) {
     gpio_test_t* gpio_test = calloc(1, sizeof(gpio_test_t));
     if (!gpio_test) {
@@ -81,6 +114,18 @@ static zx_status_t gpio_test_bind(void* ctx, zx_device_t* parent, void** cookie)
         return ZX_ERR_NOT_SUPPORTED;
     }
 
+    gpio_config_flags_t flags = GPIO_DIR_IN | GPIO_TRIGGER_EDGE |
+                                GPIO_TRIGGER_RISING | GPIO_TRIGGER_FALLING;
+    gpio_config(&gpio_test->gpio, GPIO_PWRON_DET, flags);
+    zx_status_t status = gpio_get_event_handle(&gpio_test->gpio, GPIO_PWRON_DET,
+                                               &gpio_test->event_handle);
+
+    if (status != ZX_OK) {
+        dprintf(ERROR, "gpio_test_bind: gpio_get_event_handle failed %d\n", status);
+        free(gpio_test);
+        return status;
+    }
+
     device_add_args_t args = {
         .version = DEVICE_ADD_ARGS_VERSION,
         .name = "hi3660-gpio-test",
@@ -89,13 +134,15 @@ static zx_status_t gpio_test_bind(void* ctx, zx_device_t* parent, void** cookie)
         .flags = DEVICE_ADD_NON_BINDABLE,
     };
 
-    zx_status_t status = device_add(parent, &args, NULL);
+    status = device_add(parent, &args, NULL);
     if (status != ZX_OK) {
         free(gpio_test);
         return status;
     }
 
-    thrd_create_with_name(&gpio_test->thread, led_test_thread, gpio_test, "led_test_thread");
+    thrd_create_with_name(&gpio_test->led_thread, led_test_thread, gpio_test, "led_test_thread");
+    thrd_create_with_name(&gpio_test->button_thread, button_test_thread, gpio_test,
+                          "button_test_thread");
     return ZX_OK;
 }
 
