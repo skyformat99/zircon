@@ -34,11 +34,16 @@ typedef enum {
 // signal reserved for exiting thread waiting on event handle
 #define GPIO_SIGNAL_STOP    ZX_USER_SIGNAL_2
 
+// In the functions below, the GPIO index is relative to the list of GPIOs for the device.
+// For example, the list of GPIOs a platform device has access to would likely be a small
+// subset of the total number of GPIOs, while a platform bus implementation driver would
+// have access to the complete set of GPIOs.
+
 typedef struct {
-    zx_status_t (*config)(void* ctx, unsigned pin, gpio_config_flags_t flags);
-    zx_status_t (*read)(void* ctx, unsigned pin, unsigned* out_value);
-    zx_status_t (*write)(void* ctx, unsigned pin, unsigned value);
-    zx_status_t (*get_event_handle)(void* ctx, unsigned pin, zx_handle_t* out_handle);
+    zx_status_t (*config)(void* ctx, uint32_t index, gpio_config_flags_t flags);
+    zx_status_t (*read)(void* ctx, uint32_t index, uint8_t* out_value);
+    zx_status_t (*write)(void* ctx, uint32_t index, uint8_t value);
+    zx_status_t (*get_event_handle)(void* ctx, uint32_t index, zx_handle_t* out_handle);
 } gpio_protocol_ops_t;
 
 typedef struct {
@@ -47,25 +52,25 @@ typedef struct {
 } gpio_protocol_t;
 
 // configures a GPIO
-static inline zx_status_t gpio_config(gpio_protocol_t* gpio, unsigned pin,
+static inline zx_status_t gpio_config(gpio_protocol_t* gpio, uint32_t index,
                                       gpio_config_flags_t flags) {
-    return gpio->ops->config(gpio->ctx, pin, flags);
+    return gpio->ops->config(gpio->ctx, index, flags);
 }
 
 // reads the current value of a GPIO (0 or 1)
-static inline zx_status_t gpio_read(gpio_protocol_t* gpio, unsigned pin, unsigned* out_value) {
-    return gpio->ops->read(gpio->ctx, pin, out_value);
+static inline zx_status_t gpio_read(gpio_protocol_t* gpio, uint32_t index, uint8_t* out_value) {
+    return gpio->ops->read(gpio->ctx, index, out_value);
 }
 
 // sets the current value of the GPIO (any non-zero value maps to 1)
-static inline zx_status_t gpio_write(gpio_protocol_t* gpio, unsigned pin, unsigned value) {
-    return gpio->ops->write(gpio->ctx, pin, value);
+static inline zx_status_t gpio_write(gpio_protocol_t* gpio, uint32_t index, uint8_t value) {
+    return gpio->ops->write(gpio->ctx, index, value);
 }
 
 // returns a handle used for waiting on state changes
-static inline zx_status_t gpio_get_event_handle(gpio_protocol_t* gpio, unsigned pin,
+static inline zx_status_t gpio_get_event_handle(gpio_protocol_t* gpio, uint32_t index,
                                                 zx_handle_t* out_handle) {
-    return gpio->ops->get_event_handle(gpio->ctx, pin, out_handle);
+    return gpio->ops->get_event_handle(gpio->ctx, index, out_handle);
 }
 
 __END_CDECLS;

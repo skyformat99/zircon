@@ -81,11 +81,11 @@ void pl061_free(pl061_gpios_t* gpios) {
     free(gpios);
 }
 
-static zx_status_t pl061_gpio_config(void* ctx, unsigned pin, gpio_config_flags_t flags) {
+static zx_status_t pl061_gpio_config(void* ctx, uint32_t index, gpio_config_flags_t flags) {
     pl061_gpios_t* gpios = ctx;
-    pin -= gpios->gpio_start;
-    volatile uint8_t* regs = io_buffer_virt(&gpios->buffer) + PAGE_SIZE * (pin / GPIOS_PER_PAGE);
-    uint8_t bit = 1 << (pin % GPIOS_PER_PAGE);
+    index -= gpios->gpio_start;
+    volatile uint8_t* regs = io_buffer_virt(&gpios->buffer) + PAGE_SIZE * (index / GPIOS_PER_PAGE);
+    uint8_t bit = 1 << (index % GPIOS_PER_PAGE);
 
     mtx_lock(&gpios->lock);
     uint8_t dir = readb(regs + GPIODIR);
@@ -127,28 +127,28 @@ static zx_status_t pl061_gpio_config(void* ctx, unsigned pin, gpio_config_flags_
     return ZX_OK;
 }
 
-static zx_status_t pl061_gpio_read(void* ctx, unsigned pin, unsigned* out_value) {
+static zx_status_t pl061_gpio_read(void* ctx, uint32_t index, uint8_t* out_value) {
     pl061_gpios_t* gpios = ctx;
-    pin -= gpios->gpio_start;
-    volatile uint8_t* regs = io_buffer_virt(&gpios->buffer) + PAGE_SIZE * (pin / GPIOS_PER_PAGE);
-    uint8_t bit = 1 << (pin % GPIOS_PER_PAGE);
+    index -= gpios->gpio_start;
+    volatile uint8_t* regs = io_buffer_virt(&gpios->buffer) + PAGE_SIZE * (index / GPIOS_PER_PAGE);
+    uint8_t bit = 1 << (index % GPIOS_PER_PAGE);
 
     *out_value = !!(readb(regs + GPIODATA(bit)) & bit);
     return ZX_OK;
 }
 
-static zx_status_t pl061_gpio_write(void* ctx, unsigned pin, unsigned value) {
+static zx_status_t pl061_gpio_write(void* ctx, uint32_t index, uint8_t value) {
     pl061_gpios_t* gpios = ctx;
-    pin -= gpios->gpio_start;
-    volatile uint8_t* regs = io_buffer_virt(&gpios->buffer) + PAGE_SIZE * (pin / GPIOS_PER_PAGE);
-    uint8_t bit = 1 << (pin % GPIOS_PER_PAGE);
+    index -= gpios->gpio_start;
+    volatile uint8_t* regs = io_buffer_virt(&gpios->buffer) + PAGE_SIZE * (index / GPIOS_PER_PAGE);
+    uint8_t bit = 1 << (index % GPIOS_PER_PAGE);
 
     writeb((value ? bit : 0), regs + GPIODATA(bit));
     return ZX_OK;
 }
 
-static void pl061_gpio_int_enable_locked(volatile uint8_t* regs, unsigned pin, bool enable) {
-    uint8_t bit = 1 << (pin % GPIOS_PER_PAGE);
+static void pl061_gpio_int_enable_locked(volatile uint8_t* regs, uint32_t index, bool enable) {
+    uint8_t bit = 1 << (index % GPIOS_PER_PAGE);
 
     uint8_t ie = readb(regs + GPIOIE);
     if (enable) {
@@ -205,14 +205,14 @@ static int pl061_irq_thread(void* arg) {
     return 0;
 }
 
-static zx_status_t pl061_gpio_get_event_handle(void* ctx, unsigned pin, zx_handle_t* out_handle) {
+static zx_status_t pl061_gpio_get_event_handle(void* ctx, uint32_t index, zx_handle_t* out_handle) {
     pl061_gpios_t* gpios = ctx;
-    pin -= gpios->gpio_start;
-    volatile uint8_t* regs = io_buffer_virt(&gpios->buffer) + PAGE_SIZE * (pin / GPIOS_PER_PAGE);
+    index -= gpios->gpio_start;
+    volatile uint8_t* regs = io_buffer_virt(&gpios->buffer) + PAGE_SIZE * (index / GPIOS_PER_PAGE);
 
     mtx_lock(&gpios->lock);
 
-    zx_handle_t event_handle = gpios->event_handles[pin];
+    zx_handle_t event_handle = gpios->event_handles[index];
 
     if (!event_handle) {
         zx_status_t status = zx_event_create(0, &event_handle);
@@ -220,10 +220,10 @@ static zx_status_t pl061_gpio_get_event_handle(void* ctx, unsigned pin, zx_handl
             mtx_unlock(&gpios->lock);
             return status;
         }
-        gpios->event_handles[pin] = event_handle;
+        gpios->event_handles[index] = event_handle;
     }
 
-    uint32_t irq_index = pin / GPIOS_PER_PAGE;
+    uint32_t irq_index = index / GPIOS_PER_PAGE;
     if (!gpios->irq_handles[irq_index]) {
         zx_handle_t irq_handle;
         zx_status_t status = zx_interrupt_create(gpios->resource, gpios->irqs[irq_index],
@@ -249,7 +249,7 @@ static zx_status_t pl061_gpio_get_event_handle(void* ctx, unsigned pin, zx_handl
         gpios->irq_handles[irq_index] = irq_handle;
     }
 
-    pl061_gpio_int_enable_locked(regs, pin, true);
+    pl061_gpio_int_enable_locked(regs, index, true);
     mtx_unlock(&gpios->lock);
 
     return zx_handle_duplicate(event_handle, ZX_RIGHT_SAME_RIGHTS, out_handle);

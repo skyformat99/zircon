@@ -22,7 +22,14 @@
 #include <zircon/syscalls.h>
 #include <zircon/assert.h>
 
-#include "hikey960-hw.h"
+// GPIO indices
+enum {
+    GPIO_LED1,
+    GPIO_LED2,
+    GPIO_LED3,
+    GPIO_LED4,
+    GPIO_POWER_BUTTON,
+};
 
 typedef struct {
     zx_device_t* zxdev;
@@ -53,7 +60,7 @@ static int led_test_thread(void *arg) {
     gpio_test_t* gpio_test = arg;
     gpio_protocol_t* gpio = &gpio_test->gpio;
 
-    uint32_t led_gpios[] = { GPIO_USER_LED1, GPIO_USER_LED2, GPIO_USER_LED3, GPIO_USER_LED4 };
+    uint32_t led_gpios[] = { GPIO_LED1, GPIO_LED2, GPIO_LED3, GPIO_LED4 };
 
     for (unsigned i = 0; i < countof(led_gpios); i++) {
         gpio_config(gpio, led_gpios[i], GPIO_DIR_OUT);
@@ -116,8 +123,8 @@ static zx_status_t gpio_test_bind(void* ctx, zx_device_t* parent, void** cookie)
 
     gpio_config_flags_t flags = GPIO_DIR_IN | GPIO_TRIGGER_EDGE |
                                 GPIO_TRIGGER_RISING | GPIO_TRIGGER_FALLING;
-    gpio_config(&gpio_test->gpio, GPIO_PWRON_DET, flags);
-    zx_status_t status = gpio_get_event_handle(&gpio_test->gpio, GPIO_PWRON_DET,
+    gpio_config(&gpio_test->gpio, GPIO_POWER_BUTTON, flags);
+    zx_status_t status = gpio_get_event_handle(&gpio_test->gpio, GPIO_POWER_BUTTON,
                                                &gpio_test->event_handle);
 
     if (status != ZX_OK) {

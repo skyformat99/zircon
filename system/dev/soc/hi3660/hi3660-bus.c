@@ -23,52 +23,52 @@
 #include "hi3660-bus.h"
 #include "hi3660-hw.h"
 
-static pl061_gpios_t* find_gpio(hi3660_bus_t* bus, unsigned pin) {
+static pl061_gpios_t* find_gpio(hi3660_bus_t* bus, uint32_t index) {
     pl061_gpios_t* gpios;
     // TODO(voydanoff) consider using a fancier data structure here
     list_for_every_entry(&bus->gpios, gpios, pl061_gpios_t, node) {
-        if (pin >= gpios->gpio_start && pin < gpios->gpio_start + gpios->gpio_count) {
+        if (index >= gpios->gpio_start && index < gpios->gpio_start + gpios->gpio_count) {
             return gpios;
         }
     }
-    printf("find_gpio failed for pin %u\n", pin);
+    printf("find_gpio failed for index %u\n", index);
     return NULL;
 }
 
-static zx_status_t hi3660_gpio_config(void* ctx, unsigned pin, gpio_config_flags_t flags) {
+static zx_status_t hi3660_gpio_config(void* ctx, uint32_t index, gpio_config_flags_t flags) {
     hi3660_bus_t* bus = ctx;
-    pl061_gpios_t* gpios = find_gpio(bus, pin);
+    pl061_gpios_t* gpios = find_gpio(bus, index);
     if (!gpios) {
         return ZX_ERR_INVALID_ARGS;
     }
-    return pl061_proto_ops.config(gpios, pin, flags);
+    return pl061_proto_ops.config(gpios, index, flags);
 }
 
-static zx_status_t hi3660_gpio_read(void* ctx, unsigned pin, unsigned* out_value) {
+static zx_status_t hi3660_gpio_read(void* ctx, uint32_t index, uint8_t* out_value) {
     hi3660_bus_t* bus = ctx;
-    pl061_gpios_t* gpios = find_gpio(bus, pin);
+    pl061_gpios_t* gpios = find_gpio(bus, index);
     if (!gpios) {
         return ZX_ERR_INVALID_ARGS;
     }
-    return pl061_proto_ops.read(gpios, pin, out_value);
+    return pl061_proto_ops.read(gpios, index, out_value);
 }
 
-static zx_status_t hi3660_gpio_write(void* ctx, unsigned pin, unsigned value) {
+static zx_status_t hi3660_gpio_write(void* ctx, uint32_t index, uint8_t value) {
     hi3660_bus_t* bus = ctx;
-    pl061_gpios_t* gpios = find_gpio(bus, pin);
+    pl061_gpios_t* gpios = find_gpio(bus, index);
     if (!gpios) {
         return ZX_ERR_INVALID_ARGS;
     }
-    return pl061_proto_ops.write(gpios, pin, value);
+    return pl061_proto_ops.write(gpios, index, value);
 }
 
-static zx_status_t hi3660_gpio_get_event_handle(void* ctx, unsigned pin, zx_handle_t* out_handle) {
+static zx_status_t hi3660_gpio_get_event_handle(void* ctx, uint32_t index, zx_handle_t* out_handle) {
     hi3660_bus_t* bus = ctx;
-    pl061_gpios_t* gpios = find_gpio(bus, pin);
+    pl061_gpios_t* gpios = find_gpio(bus, index);
     if (!gpios) {
         return ZX_ERR_INVALID_ARGS;
     }
-    return pl061_proto_ops.get_event_handle(gpios, pin, out_handle);
+    return pl061_proto_ops.get_event_handle(gpios, index, out_handle);
 }
 
 static gpio_protocol_ops_t gpio_ops = {
