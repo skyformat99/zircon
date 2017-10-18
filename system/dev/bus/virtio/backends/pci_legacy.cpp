@@ -20,12 +20,19 @@ zx_status_t PciLegacyBackend::Init(void) {
     }
 
     bar0_base_ = static_cast<uint16_t>(bar0.pio_addr & 0xffff);
+    status = zx_mmap_device_io(get_root_resource(), bar0_base_, static_cast<uint32_t>(bar0.size));
+    if (status != ZX_OK) {
+        dprintf(ERROR, "%s: failed to map IO window for device: %d\n", Tag(), status);
+        return status;
+    }
+
     // TODO(cja): When MSI support is added we need to dynamically add
     // the extra two fields here that offset the device config.
     // Virtio 1.0 section 4.1.4.8
     device_cfg_offset_ = static_cast<uint16_t>(bar0_base_ + VIRTIO_PCI_CONFIG_OFFSET_NOMSIX);
-    dprintf(INFO, "%s: %02x:%02x.%01x using legacy backend (io base %#04x, device base %#04x\n",
-            Tag(), info_.bus_id, info_.dev_id, info_.func_id, bar0_base_, device_cfg_offset_);
+    dprintf(INFO, "%s: %02x:%02x.%01x using legacy backend (io base %#04x, "
+            "io size: %#04zx, device base %#04x\n",
+            Tag(), info_.bus_id, info_.dev_id, info_.func_id, bar0_base_, bar0.size, device_cfg_offset_);
     return ZX_OK;
 }
 
