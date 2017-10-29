@@ -24,6 +24,7 @@
 #include "a113-hw.h"
 #include <hw/reg.h>
 
+
 static zx_status_t a113_get_initial_mode(void* ctx, usb_mode_t* out_mode) {
     *out_mode = USB_MODE_HOST;
     return ZX_OK;
@@ -48,6 +49,9 @@ static zx_status_t a113_bus_get_protocol(void* ctx, uint32_t proto_id, void* out
         return ZX_OK;
     case ZX_PROTOCOL_GPIO:
         memcpy(out, &bus->gpio, sizeof(bus->gpio));
+        return ZX_OK;
+    case ZX_PROTOCOL_I2C:
+        memcpy(out, &bus->i2c, sizeof(bus->i2c));
         return ZX_OK;
     default:
         return ZX_ERR_NOT_SUPPORTED;
@@ -88,6 +92,9 @@ static zx_status_t a113_bus_bind(void* ctx, zx_device_t* parent, void** cookie) 
     //       sets up the GPIO protocol as well.
     if ((status = a113_gpio_init(bus)) != ZX_OK) {
         zxlogf(ERROR, "a113_gpio_init failed: %d\n", status);
+    }
+    if ((status = a113_i2c_init(bus)) != ZX_OK) {
+        zxlogf(ERROR, "a113_i2c_init failed: %d\n", status);
     }
 
     bus->usb_mode_switch.ops = &usb_mode_switch_ops;
