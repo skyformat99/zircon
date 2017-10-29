@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <threads.h>
 
 #include <ddk/binding.h>
 #include <ddk/debug.h>
@@ -21,13 +22,21 @@ typedef struct {
     zx_device_t* zxdev;
     zx_handle_t rpc_channel;
     atomic_int next_txid;
+    thrd_t proxy_thread;
 } platform_dev_t;
+
+typedef struct {
+    platform_dev_t* dev;
+    void* server_ctx;
+    size_t max_transfer_size;
+} pdev_i2c_channel_ctx_t;
 
 static zx_status_t platform_dev_rpc(platform_dev_t* dev, pdev_req_t* req, pdev_resp_t* resp,
                                     zx_handle_t* out_handles, uint32_t out_handle_count) {
     uint32_t resp_size, handle_count;
 
-    req->txid = atomic_fetch_add(&dev->next_txid, 1);
+    // even txids are used for zx_channel_call while odd ones are used for asynchronous responses.
+    req->txid = atomic_fetch_add(&dev->next_txid, 2);
 
     zx_channel_call_args_t args = {
         .wr_bytes = req,
@@ -61,6 +70,53 @@ fail:
         }
     }
     return status;
+}
+
+static void pdev_i2c_complete(platform_dev_t* dev, pdev_resp_t* resp, const uint8_t* data,
+                              size_t actual) {
+    pdev_i2c_txn_ctx_t* ctx = &resp->i2c.txn_ctx;
+
+    ctx->complete_cb(resp->status, data, actual, ctx->cookie);
+}
+
+static int pdev_proxy_thread(void* arg) {
+    platform_dev_t* dev = arg;
+    zx_handle_t channel = dev->rpc_channel;
+
+    while (1) {
+        struct {
+            pdev_resp_t resp;
+            uint8_t data[PDEV_I2C_MAX_TRANSFER_SIZE];
+        } resp;
+
+        uint32_t length = sizeof(resp);
+        zx_signals_t observed;
+
+        zx_status_t status = zx_object_wait_one(channel,
+                                                ZX_CHANNEL_READABLE | ZX_CHANNEL_PEER_CLOSED,
+                                                ZX_TIME_INFINITE, &observed);
+        if (status != ZX_OK) {
+            zxlogf(ERROR, "pdev_proxy_thread: zx_object_wait_one failed %d\n", status);
+            return status;
+        }
+        status = zx_channel_read(channel, 0, &resp, NULL, length, 0, &length, NULL);
+        if (status != ZX_OK) {
+            zxlogf(ERROR, "pdev_proxy_thread: zx_channel_read failed %d\n", status);
+            return status;
+        }
+
+        switch (resp.resp.txid) {
+        case PDEV_I2C_COMPLETE:
+            pdev_i2c_complete(dev, &resp.resp, resp.data, length - sizeof(resp.resp));
+            break;
+        default:
+            zxlogf(ERROR, "pdev_proxy_thread: unknown message %u\n", resp.resp.txid);
+            break;
+        }
+    }
+
+    zxlogf(INFO, "pdev_proxy_thread exiting\n");
+    return 0;
 }
 
 static zx_status_t pdev_ums_get_initial_mode(void* ctx, usb_mode_t* out_mode) {
@@ -140,6 +196,112 @@ static gpio_protocol_ops_t gpio_ops = {
     .write = pdev_gpio_write,
 };
 
+static zx_status_t pdev_i2c_transact(void* ctx, const void* write_buf, size_t write_length,
+                                     size_t read_length, i2c_complete_cb complete_cb,
+                                     void* cookie) {
+    pdev_i2c_channel_ctx_t* channel_ctx = ctx;
+    if (!read_length && !write_length) {
+        return ZX_ERR_INVALID_ARGS;
+    }
+    if (write_length > channel_ctx->max_transfer_size ||
+        read_length > channel_ctx->max_transfer_size) {
+        return ZX_ERR_OUT_OF_RANGE;
+    }
+
+    pdev_req_t req = {
+        .op = PDEV_I2C_TRANSACT,
+        .i2c = {
+            .txn_ctx = {
+                .write_length = write_length,
+                .read_length = read_length,
+                .complete_cb = complete_cb,
+                .cookie = cookie,
+            },
+            .server_ctx = channel_ctx->server_ctx,
+        },
+    };
+    pdev_resp_t resp;
+
+    return platform_dev_rpc(channel_ctx->dev, &req, &resp, NULL, 0);
+}
+
+static zx_status_t pdev_i2c_set_bitrate(void* ctx, uint32_t bitrate) {
+    pdev_i2c_channel_ctx_t* channel_ctx = ctx;
+    pdev_req_t req = {
+        .op = PDEV_I2C_SET_BITRATE,
+        .i2c = {
+            .server_ctx = channel_ctx->server_ctx,
+            .bitrate = bitrate,
+        },
+    };
+    pdev_resp_t resp;
+
+    return platform_dev_rpc(channel_ctx->dev, &req, &resp, NULL, 0);
+}
+
+static zx_status_t pdev_i2c_get_max_transfer_size(void* ctx, size_t* out_size) {
+    pdev_i2c_channel_ctx_t* channel_ctx = ctx;
+    *out_size = channel_ctx->max_transfer_size;
+    return ZX_OK;
+}
+
+static void pdev_i2c_channel_release(void* ctx) {
+    pdev_i2c_channel_ctx_t* channel_ctx = ctx;
+    pdev_req_t req = {
+        .op = PDEV_I2C_CHANNEL_RELEASE,
+        .i2c = {
+            .server_ctx = channel_ctx->server_ctx,
+        },
+    };
+    pdev_resp_t resp;
+
+    platform_dev_rpc(channel_ctx->dev, &req, &resp, NULL, 0);
+    free(channel_ctx);
+}
+
+static i2c_channel_ops_t pdev_i2c_channel_ops = {
+    .transact = pdev_i2c_transact,
+    .set_bitrate = pdev_i2c_set_bitrate,
+    .channel_release = pdev_i2c_channel_release,
+};
+
+static zx_status_t pdev_i2c_get_channel(void* ctx, uint32_t channel_id, i2c_channel_t* channel) {
+    platform_dev_t* dev = ctx;
+    pdev_i2c_channel_ctx_t* channel_ctx = calloc(1, sizeof(pdev_i2c_channel_ctx_t));
+    if (!channel_ctx) {
+        return ZX_ERR_NO_MEMORY;
+    }
+
+    pdev_req_t req = {
+        .op = PDEV_I2C_GET_CHANNEL,
+        .index = channel_id,
+    };
+    pdev_resp_t resp;
+
+    zx_status_t status = platform_dev_rpc(dev, &req, &resp, NULL, 0);
+    if (status == ZX_OK) {
+        channel_ctx->dev = dev;
+        channel_ctx->server_ctx = resp.i2c.server_ctx;
+        channel_ctx->max_transfer_size = resp.i2c.max_transfer_size;
+        channel->ops = &pdev_i2c_channel_ops;
+        channel->ctx = channel_ctx;
+    } else {
+        free(channel_ctx);
+    }
+
+    return status;
+}
+
+static zx_status_t pdev_i2c_get_channel_by_address(void* ctx, uint32_t bus_id, uint16_t address,
+                                                   i2c_channel_t* channel) {
+    return ZX_ERR_NOT_SUPPORTED;
+}
+
+static i2c_protocol_ops_t i2c_ops = {
+    .get_channel = pdev_i2c_get_channel,
+    .get_channel_by_address = pdev_i2c_get_channel_by_address,
+};
+
 static zx_status_t platform_dev_get_protocol(void* ctx, uint32_t proto_id, void* out) {
     switch (proto_id) {
     case ZX_PROTOCOL_USB_MODE_SWITCH: {
@@ -152,6 +314,12 @@ static zx_status_t platform_dev_get_protocol(void* ctx, uint32_t proto_id, void*
         gpio_protocol_t* proto = out;
         proto->ctx = ctx;
         proto->ops = &gpio_ops;
+        return ZX_OK;
+    }
+    case ZX_PROTOCOL_I2C: {
+        i2c_protocol_t* proto = out;
+        proto->ctx = ctx;
+        proto->ops = &i2c_ops;
         return ZX_OK;
     }
     default:
@@ -221,8 +389,9 @@ static platform_device_protocol_ops_t platform_dev_proto_ops = {
     .map_interrupt = platform_dev_map_interrupt,
 };
 
-void platform_dev_release(void* ctx) {
+static void platform_dev_release(void* ctx) {
     platform_dev_t* dev = ctx;
+
     zx_handle_close(dev->rpc_channel);
     free(dev);
 }
@@ -254,6 +423,10 @@ zx_status_t platform_proxy_create(void* ctx, zx_device_t* parent, const char* na
         zx_handle_close(rpc_channel);
         free(dev);
     }
+
+    thrd_create_with_name(&dev->proxy_thread, pdev_proxy_thread, dev, "pdev_proxy_thread");
+    // proxy thread will exit when it gets ZX_ERR_PEER_CLOSED
+    thrd_detach(dev->proxy_thread);
 
     return status;
 }
