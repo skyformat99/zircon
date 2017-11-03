@@ -34,6 +34,7 @@ struct dc_pending {
 };
 
 #define PENDING_BIND 1
+#define PENDING_SUSPEND 2
 
 struct dc_devhost {
     port_handler_t ph;
@@ -48,6 +49,7 @@ struct dc_devhost {
 };
 
 #define DEV_HOST_DYING 1
+#define DEV_HOST_SUSPEND 2
 
 struct dc_device {
     zx_handle_t hrpc;
