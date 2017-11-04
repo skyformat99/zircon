@@ -185,6 +185,8 @@ static list_node_t list_drivers_fallback = LIST_INITIAL_VALUE(list_drivers_fallb
 // All Devices (excluding static immortal devices)
 static list_node_t list_devices = LIST_INITIAL_VALUE(list_devices);
 
+// All DevHosts
+
 static driver_t* libname_to_driver(const char* libname) {
     driver_t* drv;
     list_for_every_entry(&list_drivers, drv, driver_t, node) {
@@ -575,6 +577,10 @@ static zx_status_t dc_new_devhost(const char* name, devhost_t** out) {
     }
 
     list_initialize(&dh->devices);
+    list_initialize(&dh->children);
+
+    list_add_tail(&dh->parent->children, &dh->node);
+    dh->parent->refcount++;
 
     *out = dh;
     return ZX_OK;

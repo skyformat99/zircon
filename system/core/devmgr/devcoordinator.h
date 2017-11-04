@@ -43,9 +43,16 @@ struct dc_devhost {
     zx_koid_t koid;
     int32_t refcount;
     uint32_t flags;
+    devhost_t* parent;
 
     // list of all devices on this devhost
     list_node_t devices;
+
+    // listnode for this device in its parent devhost's list of children
+    list_node_t node;
+
+    // list of all child devhosts of this devhost
+    list_node_t children;
 };
 
 #define DEV_HOST_DYING 1
